@@ -107,17 +107,13 @@ while  U_change > U_change_max
 
   while resid_pc > resid_pc_max & p_count < 100;
     p_count = p_count + 1;
-    for i = 2:nhx-1
-      for j = 2:nhy-1
 
-        % error
-        residual(i,j) = (rho/dt)*div(i,j) ...
-          - 1/(hx*hx)*(P(i+1,j) - 2.*P(i,j) + P(i-1,j)) ...
-          - 1/(hy*hy)*(P(i,j+1) - 2.*P(i,j) + P(i,j-1));
+    % error
+    residual(i,j) = (rho/dt)*div(i,j) ...
+      - 1/(hx*hx)*(P(i+1,j) - 2.*P(i,j) + P(i-1,j)) ...
+      - 1/(hy*hy)*(P(i,j+1) - 2.*P(i,j) + P(i,j-1));
 
-        P(i,j) = (1/(-2/(hx*hx) - 2/(hy*hy))*residual(i,j))*relx_pc + P(i,j);
-      end
-    end
+    P(i,j) = (1/(-2/(hx*hx) - 2/(hy*hy))*residual(i,j))*relx_pc + P(i,j);
 
     P(1,:)   = P(2,:);
     P(:,1)   = P(:,2);
@@ -129,12 +125,8 @@ while  U_change > U_change_max
   end
 
   % correct velocity based on pressure results
-  for i = 2:nhx-1
-    for j = 2:nhy-1
-      Unew(i,j) = Unew(i,j) - (dt/rho)*(P(i+1,j) - P(i-1,j))/(2*hx);
-      Vnew(i,j) = Vnew(i,j) - (dt/rho)*(P(i,j+1) - P(i,j-1))/(2*hy);
-    end
-  end
+  Unew(i,j) = Unew(i,j) - (dt/rho)*(P(i+1,j) - P(i-1,j))/(2*hx);
+  Vnew(i,j) = Vnew(i,j) - (dt/rho)*(P(i,j+1) - P(i,j-1))/(2*hy);
 
   % enforce boundary conditions
   Unew(nhx,:)     = Unew(nhx-1,:);
