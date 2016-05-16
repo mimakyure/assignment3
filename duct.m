@@ -164,13 +164,9 @@ while  U_change > U_change_max
   V = Vnew;
   Vnew = V;
   
-  % display results every 10 time steps
-  if round(n_count/10)*10 == n_count 
-    n_count
-    div_sum
-    U_change
-    U_max
-  end
+  % print a status update
+  fprintf('%d) div=%1.2e, U_change=%1.2e, U_max=%1.2e\n', ...
+    n_count, div_sum, U_change, U_max);
 
 end
 
