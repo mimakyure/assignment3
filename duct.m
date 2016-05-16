@@ -1,5 +1,7 @@
 % First order Euler scheme time discretisation
 % Approximate pressure at the new time step and use Poisson equation
+page_screen_output(0);
+page_output_immediately(1);
 
 %%
 % code timing -----------------------------------------------------------------
@@ -31,6 +33,11 @@ nhy = height/hy + 2;
 
 % stopping criteria
 U_change_max = 1e-3;
+resid_pc_max = 1e-1;
+
+% pressure solution relaxation factor
+relx_pc = 0.1;
+
 
 
 %%
@@ -104,11 +111,7 @@ while  U_change > U_change_max
 
   % solve Poisson equation for pressure as heat equation
   resid_pc = 1;
-  resid_pc_max = 1e-3;
   p_count = 0;
-
-  % relaxation factor
-  relx_pc = 0.1;
 
   while resid_pc > resid_pc_max & p_count < 100;
     p_count = p_count + 1;
