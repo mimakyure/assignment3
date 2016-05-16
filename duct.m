@@ -95,8 +95,8 @@ while  U_change > U_change_max
   Vnew(:,nhy) = -Vnew(:,nhy-1);
 
   % compute divergence at each node
-  div(2:nhx-1,2:nhy-1) = (Unew(3:nhx,2:nhy-1) - Unew(1:nhx-2,2:nhy-1))/(2*hx)
-    + (Vnew(2:nhx-1,3:nhy) - Vnew(2:nhx-1,1:nhy-2))/(2*hy);
+  div(i,j) = (Unew(i+1,j) - Unew(i-1,j))/(2*hx) ...
+    + (Vnew(i,j+1) - Vnew(i,j-1))/(2*hy);
 
   % calculate average divergence over all nodes
   div_sum = sum(sum(abs(div)))/((nhx - 2)*(nhy - 2));
