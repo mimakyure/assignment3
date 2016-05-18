@@ -1,7 +1,11 @@
-% First order Euler scheme time discretisation
-% Approximate pressure at the new time step and use Poisson equation
-page_screen_output(0);
-page_output_immediately(1);
+% AMME5202
+% Semester 1, 2016
+% Matthew Imakyure
+
+if exist('OCTAVE_VERSION', 'builtin') ~= 0;
+  page_screen_output(0);
+  page_output_immediately(1);
+end
 
 %%
 % code timing -----------------------------------------------------------------
@@ -14,7 +18,7 @@ tic;
 nu     = 0.001;
 rho    = 1;
 Uin    = 1.0;
-length = 4;
+len    = 4;
 height = 0.1;
 
 
@@ -22,23 +26,21 @@ height = 0.1;
 % solver settings -------------------------------------------------------------
 
 % discretisation controls
+% hx and hy are adjusted later to align with domain size
 dt = 1e-3;
-hx = 1e-3;
-hy = 1e-3;
-
-% set number of mesh nodes in x and y directions
-% ghost cells at edges to maintain boundary conditions
-nhx = length/hx + 2;
-nhy = height/hy + 2;
+hx = 0.0025;
+hy = 0.025;
 
 % stopping criteria
 U_change_max = 1e-3;
 resid_pc_max = 1e-1;
 
-% pressure solution relaxation factor
-relx_pc = 0.1;
+% relaxation factor (not used)
+relax = 1;
 
-
+% might be useful
+Cr = 1.5*Uin*dt/hx;
+VN = 1*dt/hx^2;
 
 %%
 % initialize variables --------------------------------------------------------
@@ -46,22 +48,26 @@ relx_pc = 0.1;
 % number of time step iterations needed to find solution
 n_count = 0;
 
-% set initial change in velocity to get in loop
-U_change = 10;
+% set number of mesh nodes in x and y directions
+% ghost cells at edges to maintain boundary conditions
+nhx = len/hx + 3;
+nhy = height/hy + 3;
+midy = round(nhy/2); % for plotting centreline velocity
 
 % mesh matrixes to compute U velocity, V velocity, and pressure
 U    = zeros(nhx,nhy);
 Unew = zeros(nhx,nhy);
 V    = zeros(nhx,nhy);
-Vnew = zeros(nhy,nhx);
+Vnew = zeros(nhx,nhy);
 P    = zeros(nhx,nhy);
 div  = zeros(nhx,nhy);
 
-[nhx, nhy] = size(U); % matrix is reversed with rows as x, columns as y
+% indexes for mesh internal nodes
 i = 2:nhx-1;
 j = 2:nhy-1;
 
-U(1, :) = Uin; % inlet on left
+% set initial change in velocity to get in loop
+U_change = 10;
 
 %%
 % calculate the solution ------------------------------------------------------
@@ -69,43 +75,52 @@ U(1, :) = Uin; % inlet on left
 while  U_change > U_change_max
   n_count = n_count + 1;
 
-  % calculate intermediate U velocity
+  %%
+  % solve for velocity
 
+  % calculate intermediate U velocity
+  % second order central x & y, first order upwind x, first order central
+  % central y
   Unew(i,j) = U(i,j) + ...
-    + nu*dt*(1/(hx*hx).*(U(i+1,j) - 2.*U(i,j) + U(i-1,j)) ...
-           + 1/(hy*hy).*(U(i,j+1) - 2.*U(i,j) + U(i,j-1))) ...
+    + nu*dt*(1/(hx*hx)*(U(i+1,j) - 2*U(i,j) + U(i-1,j)) ...
+           + 1/(hy*hy)*(U(i,j+1) - 2*U(i,j) + U(i,j-1))) ...
 	  - dt*U(i,j)/(hx).*(U(i,j) - U(i-1,j)) ...
     - dt*V(i,j)/(2*hy).*(U(i,j+1) - U(i,j-1));
 
-  Unew(nhx,:)       =  Unew(nhx-1,:);
-  Unew(1,2:nhy - 1) = -Unew(2,2:nhy-1) + 2;
-  Unew(2:nhx,1)     = -Unew(2:nhx,2);
-  Unew(2:nhx,nhy)   = -Unew(2:nhx,nhy-1);
+  % boundary conditions
+  Unew(nhx,:)       =  Unew(nhx-1,:);       % zero gradient at outlet
+  Unew(1,2:nhy - 1) = -Unew(2,2:nhy-1) + 2; % inlet velocity of 1
+  Unew(2:nhx,1)     = -Unew(2:nhx,2);       % zero velocity at wall
+  Unew(2:nhx,nhy)   = -Unew(2:nhx,nhy-1);   % zero velocity at wall
 
-  % calculate intermediate V velocity
+ % calculate intermediate V velocity (similar to U equations)
   Vnew(i,j) = V(i,j)...
-    + nu*dt*(1/(hx*hx).*(V(i+1,j) - 2.*V(i,j) + V(i-1,j)) ...
-           + 1/(hy*hy).*(V(i,j+1) - 2.*V(i,j) + V(i,j-1))) ...
+    + nu*dt*(1/(hx*hx)*(V(i+1,j) - 2*V(i,j) + V(i-1,j)) ...
+           + 1/(hy*hy)*(V(i,j+1) - 2*V(i,j) + V(i,j-1))) ...
     - dt*U(i,j)/(hx).*(V(i,j) - V(i-1,j)) ...
     - dt*V(i,j)/(2*hy).*(V(i,j+1) - V(i,j-1));
 
-  Vnew(nhx,:) =  Vnew(nhx-1,:);
-  Vnew(1,:)   = -Vnew(2,:);
-  Vnew(:,1)   = -Vnew(:,2);
-  Vnew(:,nhy) = -Vnew(:,nhy-1);
+  % boundary conditions
+  Vnew(nhx,:) =  Vnew(nhx-1,:); % zero gradient at outlet
+  Vnew(1,:)   = -Vnew(2,:);     % zero velocity at inlet
+  Vnew(:,1)   = -Vnew(:,2);     % zero velocity at wall
+  Vnew(:,nhy) = -Vnew(:,nhy-1); % zero velocity at wall
 
+  %%
+  % solve Poisson equation for pressure using matrix solver
   % compute divergence at each node
-  div(i,j) = (Unew(i+1,j) - Unew(i-1,j))/(2*hx) ...
-    + (Vnew(i,j+1) - Vnew(i,j-1))/(2*hy);
-
-  % calculate average divergence over all nodes
-  div_sum = sum(sum(abs(div)))/((nhx - 2)*(nhy - 2));
-
-  % solve Poisson equation for pressure as heat equation
   resid_pc = 1;
   p_count = 0;
 
-  while resid_pc > resid_pc_max & p_count < 100;
+  % compute divergence at each node using first order central scheme
+  div(i,j) = (Unew(i+1,j) - Unew(i-1,j))/(2*hx) ... 
+    + (Vnew(i,j+1) - Vnew(i,j-1))/(2*hy);
+
+  % calculate average divergence over all nodes (for tracking)
+  div_sum = sum(sum(abs(div)))/((nhx - 2)*(nhy - 2));
+
+  % solve Poisson equation for pressure as heat equation
+  while resid_pc > resid_pc_max && p_count < 100;
     p_count = p_count + 1;
 
     % error
@@ -115,6 +130,8 @@ while  U_change > U_change_max
 
     P(i,j) = (1/(-2/(hx*hx) - 2/(hy*hy))*residual(i,j))*relx_pc + P(i,j);
 
+    % boundary conditions
+    % zero pressure gradient at walls
     P(1,:)   = P(2,:);
     P(:,1)   = P(:,2);
     P(:,nhy) = P(:,nhy-1);
@@ -124,11 +141,13 @@ while  U_change > U_change_max
 
   end
 
+  %%
   % correct velocity based on pressure results
+  % central approximation for pressure
   Unew(i,j) = Unew(i,j) - (dt/rho)*(P(i+1,j) - P(i-1,j))/(2*hx);
   Vnew(i,j) = Vnew(i,j) - (dt/rho)*(P(i,j+1) - P(i,j-1))/(2*hy);
 
-  % enforce boundary conditions
+  % boundary conditions as above
   Unew(nhx,:)     = Unew(nhx-1,:);
   Unew(1,2:nhy-1) = -Unew(2,2:nhy-1) + 2;
   Unew(2:nhx,1)   = -Unew(2:nhx,2);
@@ -140,23 +159,47 @@ while  U_change > U_change_max
   Vnew(:,nhy) = -Vnew(:,nhy-1);
 
   U_change = max(max(abs((Unew - U)/dt)));
-  U_max = max(max(Unew));
+  U_max = max(max(Unew(i,:)));
 
   % pointer swap
-  Utmp = U;
   U = Unew;
-  Unew = U;
-
-  Vtmp = V;
   V = Vnew;
-  Vnew = V;
   
   % print a status update
-  fprintf('%d) div=%1.2e, U_change=%1.2e, U_max=%1.2e\n', ...
-    n_count, div_sum, U_change, U_max);
+  if round(n_count/10)*10 == n_count
+    fprintf('%d) div=%1.2e, U_change=%1.2e, U_max=%1.2e\n', ...
+      n_count, div_sum, U_change, U_max);
+  end
 
 end
-
-U_change
-
 toc
+
+
+fprintf('%d) div=%1.2e, U_change=%1.2e, U_max=%1.2e\n', ...
+  n_count, div_sum, U_change, U_max);
+
+%%
+% plots
+
+% node locations to plot results
+xn = -hx:hx:len+hx;
+yn = -hy:hy:height+hy;
+
+% development of max velocity
+figure(1);
+plot(xn, U(:,midy));
+xlim([0 4]);
+title('Velocity at Duct Centreline');
+xlabel('X-Position (m)');
+ylabel('U Velocity (m/s)');
+
+% velocity profiles
+figure(2);
+profiles = bsxfun(@minus, U(:,j), min(U(:,j), [], 2));
+x_profiles = bsxfun(@plus, xn', profiles);
+plot(x_profiles(floor(size(x_profiles, 1)/100)*[1,2,4,8,16,32,64,100],:), ...
+  yn(j));
+title('Velocity Profile Development');
+xlabel('X-Position (m)');
+ylabel('Y-Position (m)');
+
