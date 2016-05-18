@@ -1,3 +1,4 @@
+
 % AMME5202
 % Semester 1, 2016
 % Matthew Imakyure
@@ -16,9 +17,9 @@ tic;
 %%
 % given parameters ------------------------------------------------------------
 nu     = 0.001;
-rho    = 1;
+rho    = 1.0;
 Uin    = 1.0;
-len    = 4;
+len    = 4.0;
 height = 0.1;
 
 
@@ -28,8 +29,8 @@ height = 0.1;
 % discretisation controls
 % hx and hy are adjusted later to align with domain size
 dt = 1e-3;
-hx = 0.0025;
-hy = 0.025;
+hx = 0.025;
+hy = 0.0025;
 
 % stopping criteria
 U_change_max = 1e-3;
@@ -41,6 +42,10 @@ relax = 1;
 % might be useful
 Cr = 1.5*Uin*dt/hx;
 VN = 1*dt/hx^2;
+fprintf('Cr = %1.2g\nVN = %1.2g\n', Cr, VN);
+fprintf('Cr + 2VN = %1.2g\n', Cr + 2*VN);
+fprintf('4VN(1 - VN) - Cr^2 = %1.2g\n', 4*VN*(1 - VN)- Cr^2);
+pause();
 
 %%
 % initialize variables --------------------------------------------------------
@@ -50,9 +55,13 @@ n_count = 0;
 
 % set number of mesh nodes in x and y directions
 % ghost cells at edges to maintain boundary conditions
-nhx = len/hx + 3;
-nhy = height/hy + 3;
-midy = round(nhy/2); % for plotting centreline velocity
+nhx = len/hx + 2;
+nhy = height/hy + 2;
+
+% for plotting results
+midy = round(nhy/2);
+xn = -hx/2:hx:len+hx/2;
+yn = -hy/2:hy:height+hy/2;
 
 % mesh matrixes to compute U velocity, V velocity, and pressure
 U    = zeros(nhx,nhy);
@@ -93,7 +102,7 @@ while  U_change > U_change_max
   Unew(2:nhx,1)     = -Unew(2:nhx,2);       % zero velocity at wall
   Unew(2:nhx,nhy)   = -Unew(2:nhx,nhy-1);   % zero velocity at wall
 
- % calculate intermediate V velocity (similar to U equations)
+  % calculate intermediate V velocity (similar to U equations)
   Vnew(i,j) = V(i,j)...
     + nu*dt*(1/(hx*hx)*(V(i+1,j) - 2*V(i,j) + V(i-1,j)) ...
            + 1/(hy*hy)*(V(i,j+1) - 2*V(i,j) + V(i,j-1))) ...
@@ -128,7 +137,7 @@ while  U_change > U_change_max
       - 1/(hx*hx)*(P(i+1,j) - 2.*P(i,j) + P(i-1,j)) ...
       - 1/(hy*hy)*(P(i,j+1) - 2.*P(i,j) + P(i,j-1));
 
-    P(i,j) = (1/(-2/(hx*hx) - 2/(hy*hy))*residual(i,j))*relx_pc + P(i,j);
+    P(i,j) = (1/(-2/(hx*hx) - 2/(hy*hy))*residual(i,j))*relax + P(i,j);
 
     % boundary conditions
     % zero pressure gradient at walls
@@ -169,6 +178,9 @@ while  U_change > U_change_max
   if round(n_count/10)*10 == n_count
     fprintf('%d) div=%1.2e, U_change=%1.2e, U_max=%1.2e\n', ...
       n_count, div_sum, U_change, U_max);
+    plot(xn, U(:,midy));
+    xlim([0 4]);
+    drawnow limitrate;
   end
 
 end
@@ -180,10 +192,6 @@ fprintf('%d) div=%1.2e, U_change=%1.2e, U_max=%1.2e\n', ...
 
 %%
 % plots
-
-% node locations to plot results
-xn = -hx:hx:len+hx;
-yn = -hy:hy:height+hy;
 
 % development of max velocity
 figure(1);
