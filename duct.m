@@ -3,8 +3,6 @@
 
 %%
 % code timing -----------------------------------------------------------------
-tic;
-%
 % v1, no optimisations, 12.5635 s
 
 %%
@@ -21,18 +19,24 @@ height = 0.1;
 
 % discretisation controls
 dt = 1e-3;
-hx = 1e-3;
-hy = 1e-3;
+hx = 0.02;
+hy = 0.002;
+relx_pc = 1;
 
 % set number of mesh nodes in x and y directions
 % ghost cells at edges to maintain boundary conditions
 nhx = length/hx + 2;
 nhy = height/hy + 2;
 
+
 % stopping criteria
 U_change_max = 1e-3;
+resid_pc_max = 1e-3;
+resid_pc = 1;
+timertimes = [];
 
-
+for timeri = 1:3;
+  
 %%
 % initialize variables --------------------------------------------------------
 
@@ -49,13 +53,10 @@ V    = zeros(nhx,nhy);
 Vnew = zeros(nhy,nhx);
 P    = zeros(nhx,nhy);
 
-[nhx, nhy] = size(U); % matrix is reversed with rows as x, columns as y
-
-U(1, :) = Uin; % inlet on left
 
 %%
 % calculate the solution ------------------------------------------------------
-
+tic;
 while  U_change > U_change_max
   n_count = n_count + 1;
 
@@ -103,12 +104,7 @@ while  U_change > U_change_max
   div_sum = sum(sum(abs(div)))/((nhx - 2)*(nhy - 2));
 
   % solve Poisson equation for pressure as heat equation
-  resid_pc = 1;
-  resid_pc_max = 1e-3;
   p_count = 0;
-
-  % relaxation factor
-  relx_pc = 0.1;
 
   while resid_pc > resid_pc_max & p_count < 100;
     p_count = p_count + 1;
@@ -166,14 +162,13 @@ while  U_change > U_change_max
   
   % display results every 10 time steps
   if round(n_count/10)*10 == n_count 
-    n_count
-    div_sum
-    U_change
-    U_max
+    fprintf('%d) div=%1.2e, U_change=%1.2e, U_max=%1.2e\n', ...
+      n_count, div_sum, U_change, U_max);
   end
 
 end
 
 U_change
 
-toc
+timertimes(timeri) = toc;
+end
