@@ -84,6 +84,7 @@ for timerI = 1:runs
   % set initial change in velocity to get in loop
   U_change = 10;
 
+
   %%
   % assemble pressure coefficients matrix for poisson equation matrix solver
   % ghost cells disappear from conditions and embedding done next so not included
@@ -96,24 +97,25 @@ for timerI = 1:runs
     [-1 0 1], Ai, Ai);
 
   % embed boundary conditions by substituting P for P^{x-}, P^{y-}, P^{y+}
-  % P(1,:) = P(2,:); zero gradient at inlet, P^{x-} gone at inlet
+
+  % P(1,:) = P(2,:) -> P^{x-} = P; zero gradient at inlet
+  % P gets P^{x-} coefficient
   A(1) = A(1) + hx^-2;
 
-  % P(nhx,:) = 0; zero pressure at outlet ghost cell; no substitions  here
+  % P(nhx,:) = 0 -> P^{x+} = 0; zero pressure at outlet ghost cell
   % P^{x+} gone at outlet
 
   % expand into system of equations to apply remainder of conditions
-  A = kron(eye(Aj), A);
+  A = kron(eye(Aj), A); % ghost cells remain zero doing this
 
-  % add coefficients for y+/- pressures, matrix becomes pentadiagonal
+  % add coefficients for y+/- pressures at +/-nhx, matrix becomes pentadiagonal
   A = A + spdiags(ones(Ai*Aj,1)*[hy^-2 hy^-2], [-Ai Ai], Ai*Aj, Ai*Aj);
 
-  % P(:,1) = P(:,2); P(:,nhy) = P(:,nhy-1); zero gradient at walls
-  % P^{y+} gone at upper wall, P^{y-} gone at lower wall
-  E = sparse(Ai*Aj, Ai*Aj);
-  E(1:Ai,1:Ai) = speye(Ai)*hy^-2;
-  E(end-(Ai-1):end,end-(Ai-1):end) = speye(Ai)*hy^-2;
-  A = A + E;
+  % P(:,1)   = P(:,2)     -> P^{y-} = P; zero gradient at lower wall
+  % P(:,nhy) = P(:,nhy-1) -> P^{y+} = P; zero gradient at upper wall
+  E = sparse([1:Ai,Ai*(Aj-1)+1:Ai*Aj], [1:Ai,Ai*(Aj-1)+1:Ai*Aj], ...
+    ones(2*Ai,1)*hy^-2, Ai*Aj, Ai*Aj);
+  A = A + E; % P gets P^{y+} coefficient at top and P^{y-} coefficent at bottom
 
 
   %%
@@ -125,6 +127,7 @@ for timerI = 1:runs
   while  U_change > U_change_max
     vTime = tic;
     n_count = n_count + 1;
+
 
     %%
     % solve for velocity
@@ -156,6 +159,7 @@ for timerI = 1:runs
     Vnew(:,1)   = -Vnew(:,2);     % zero velocity at wall
     Vnew(:,nhy) = -Vnew(:,nhy-1); % zero velocity at wall
     vTot = vTot + toc(vTime);
+
 
     %%
     % solve Poisson equation for pressure using matrix solver
