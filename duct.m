@@ -8,17 +8,8 @@ if exist('OCTAVE_VERSION', 'builtin') ~= 0;
   page_output_immediately(1);
 end
 
-fprintf('v2\n');
+fprintf('v3\n');
 
-%%
-% code timing -----------------------------------------------------------------
-% [iter, total time, v/u-calc time, p-calc time, other-calc]
-% v1, Gauss-Seidel, No optimisations
-% [8795, 5032.4, 37.434, 1686.3, 12.974]
-% [8795, 6797.9, 37.472, 1715.5, 12.444]
-% v2, Gauss-Jacobi, Vectorized operations
-% [9347, 2123.5. 10.052, 367.14]
-% [9347, 2499.3, 9.8150, 359.29]
 
 %%
 % given parameters ------------------------------------------------------------
@@ -41,6 +32,8 @@ hy = 0.002;
 % stopping criteria
 U_change_max = 1e-3;
 resid_pc_max = 1e-3;
+bicg_max     = 1e-3;
+bicg_iter    = 100;
 
 % relaxation factor (not used)
 relax = 1;
@@ -48,9 +41,11 @@ relax = 1;
 % might be useful
 Cr = 1.5*Uin*dt/hx;
 VN = 1*dt/hx^2;
-fprintf('Cr = %1.2g\nVN = %1.2g\n', Cr, VN);
-fprintf('Cr + 2VN = %1.2g\n', Cr + 2*VN);
-fprintf('4VN(1 - VN) - Cr^2 = %1.2g\n', 4*VN*(1 - VN)- Cr^2);
+fprintf('Cr = %1.2g\n', Cr);
+fprintf('Cr + 2VN = %1.2g\n', Cr + 2*VN); % < 1
+fprintf('VN = %1.2g\n', VN); % < 1/2
+fprintf('4VN(1 - VN) - Cr^2 = %1.2g\n', 4*VN*(1 - VN)- Cr^2); % > 0
+
 
 %%
 % initialize variables --------------------------------------------------------
@@ -72,12 +67,13 @@ for timerI = 1:runs
   % number of time step iterations needed to find solution
   n_count = 0;
 
-  % mesh matrixes to compute U velocity, V velocity, and pressure
+  % mesh matrices to compute U velocity, V velocity, and pressure
   U    = zeros(nhx,nhy);
   Unew = zeros(nhx,nhy);
   V    = zeros(nhx,nhy);
   Vnew = zeros(nhx,nhy);
   P    = zeros(nhx,nhy);
+  Pnew = zeros((nhx-2)*(nhy-2),1);
   div  = zeros(nhx,nhy);
   residual = zeros(nhx,nhy);
 
@@ -87,6 +83,38 @@ for timerI = 1:runs
 
   % set initial change in velocity to get in loop
   U_change = 10;
+
+  %%
+  % assemble pressure coefficients matrix for poisson equation matrix solver
+  % ghost cells disappear from conditions and embedding done next so not included
+  Ai = nhx - 2;
+  Aj = nhy - 2;
+
+  % build main tri-diagonal
+  A = spdiags(ones(Ai, 1)* ...
+    [hx^-2 -2*(hx^-2 + hy^-2) hx^-2], ...
+    [-1 0 1], Ai, Ai);
+
+  % embed boundary conditions by substituting P for P^{x-}, P^{y-}, P^{y+}
+  % P(1,:) = P(2,:); zero gradient at inlet, P^{x-} gone at inlet
+  A(1) = A(1) + hx^-2;
+
+  % P(nhx,:) = 0; zero pressure at outlet ghost cell; no substitions  here
+  % P^{x+} gone at outlet
+
+  % expand into system of equations to apply remainder of conditions
+  A = kron(eye(Aj), A);
+
+  % add coefficients for y+/- pressures, matrix becomes pentadiagonal
+  A = A + spdiags(ones(Ai*Aj,1)*[hy^-2 hy^-2], [-Ai Ai], Ai*Aj, Ai*Aj);
+
+  % P(:,1) = P(:,2); P(:,nhy) = P(:,nhy-1); zero gradient at walls
+  % P^{y+} gone at upper wall, P^{y-} gone at lower wall
+  E = sparse(Ai*Aj, Ai*Aj);
+  E(1:Ai,1:Ai) = speye(Ai)*hy^-2;
+  E(end-(Ai-1):end,end-(Ai-1):end) = speye(Ai)*hy^-2;
+  A = A + E;
+
 
   %%
   % calculate the solution ------------------------------------------------------
@@ -102,8 +130,7 @@ for timerI = 1:runs
     % solve for velocity
 
     % calculate intermediate U velocity
-    % second order central x & y, first order upwind x, first order central
-    % central y
+    % 2nd order central x & y, first order upwind x, 1st order central y
     Unew(i,j) = U(i,j) + ...
       + nu*dt*(1/(hx*hx)*(U(i+1,j) - 2*U(i,j) + U(i-1,j)) ...
              + 1/(hy*hy)*(U(i,j+1) - 2*U(i,j) + U(i,j-1))) ...
@@ -132,40 +159,26 @@ for timerI = 1:runs
 
     %%
     % solve Poisson equation for pressure using matrix solver
-    % compute divergence at each node
     pTime = tic;
     resid_pc = 1;
     p_count = 0;
 
-    % compute divergence at each node using first order central scheme
+    % compute divergence at each node using central difference
     div(i,j) = (Unew(i+1,j) - Unew(i-1,j))/(2*hx) ... 
       + (Vnew(i,j+1) - Vnew(i,j-1))/(2*hy);
 
     % calculate average divergence over all nodes (for tracking)
     div_sum = sum(sum(abs(div)))/((nhx - 2)*(nhy - 2));
 
-    % solve Poisson equation for pressure as heat equation
-    while resid_pc > resid_pc_max && p_count < 100;
-      p_count = p_count + 1;
+    % calculate source term trimming off ghost cells
+    f = rho/dt*div(2:end-1,2:end-1);
 
-      % error
-      residual(i,j) = (rho/dt)*div(i,j) ...
-        - 1/(hx*hx)*(P(i+1,j) - 2.*P(i,j) + P(i-1,j)) ...
-        - 1/(hy*hy)*(P(i,j+1) - 2.*P(i,j) + P(i,j-1));
-
-      P(i,j) = (1/(-2/(hx*hx) - 2/(hy*hy))*residual(i,j))*relax + P(i,j);
-
-      % boundary conditions
-      % zero pressure gradient at walls
-      P(1,:)   = P(2,:);
-      P(:,1)   = P(:,2);
-      P(:,nhy) = P(:,nhy-1);
-      P(nhx,:) = 0;
-
-      resid_pc = sum(sum(abs(residual)))/((nhx - 2)*(nhy - 2));
-
-    end
+    % use iterative matrix solver to resolve pressure
+    [Pnew, flag] = bicgstab(A, f(:), bicg_max, bicg_iter);
+    P = sparse(nhx, nhy);
+    P(2:end-1,2:end-1) = reshape(Pnew, nhx-2, nhy-2); 
     pTot = pTot + toc(pTime);
+
 
     %%
     % correct velocity based on pressure results
@@ -214,6 +227,7 @@ for timerI = 1:runs
 
   timerTimes(timerI,:) = [n_count, tTot, vTot, pTot, oTot];
 end
+
 
 %%
 % plots
